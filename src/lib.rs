@@ -1,0 +1,11 @@
+//! The query service of risingrepos.com. The modules hold the logic and its tests; this file only joins them to
+//! Cloudflare's runtime.
+
+mod route;
+
+use worker::{event, Context, Env, Request, Response, Result};
+
+#[event(fetch)]
+async fn fetch(_request: Request, _env: Env, _context: Context) -> Result<Response> {
+    Response::error("Not found", 404)
+}
