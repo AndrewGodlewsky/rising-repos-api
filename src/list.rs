@@ -105,6 +105,7 @@ impl List {
         Ok(List { text, lower, rows })
     }
 
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.rows.len()
     }

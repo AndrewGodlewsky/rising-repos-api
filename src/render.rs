@@ -95,6 +95,14 @@ pub fn not_found() -> String {
     )
 }
 
+/// The lines for a request that comes before the service holds a list, which it answers with 503.
+pub fn not_loaded() -> String {
+    format!(
+        "The list of repositories is not loaded yet, since the site could not be reached. Try again in a minute. \
+         The newest board is at {SITE}/latest.md.\n"
+    )
+}
+
 /// The lines for a repository the list does not hold.
 pub fn repo_not_found(owner: &str, name: &str) -> String {
     format!(
@@ -344,6 +352,13 @@ mod tests {
             assert!(search_answer(&[], &asked, BASE).0.contains(OWNER_LINE), "no match, json {json}");
             assert!(repo_answer(&flask, json).0.contains(OWNER_LINE), "repository, json {json}");
         }
+    }
+
+    #[test]
+    fn before_the_list_is_loaded_the_answer_says_so_and_where_the_board_is() {
+        let body = not_loaded();
+        assert!(body.starts_with("The list of repositories is not loaded yet"), "{body}");
+        assert!(body.contains("https://risingrepos.com/latest.md"), "{body}");
     }
 
     #[test]
