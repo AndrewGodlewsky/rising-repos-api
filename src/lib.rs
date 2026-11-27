@@ -3,6 +3,7 @@
 
 mod list;
 mod route;
+mod search;
 
 use worker::{event, Context, Env, Request, Response, Result};
 
