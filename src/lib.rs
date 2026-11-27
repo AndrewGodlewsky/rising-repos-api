@@ -2,6 +2,7 @@
 //! Cloudflare's runtime.
 
 mod list;
+mod render;
 mod route;
 mod search;
 
