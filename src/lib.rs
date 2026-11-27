@@ -1,6 +1,7 @@
 //! The query service of risingrepos.com. The modules hold the logic and its tests; this file only joins them to
 //! Cloudflare's runtime.
 
+mod list;
 mod route;
 
 use worker::{event, Context, Env, Request, Response, Result};

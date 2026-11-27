@@ -50,7 +50,7 @@ fn words(q: &str) -> Vec<String> {
     let cut: String = q.chars().take(QUERY_LIMIT).collect();
     cut.split_whitespace()
         .filter(|piece| piece.chars().any(char::is_alphanumeric))
-        .map(str::to_lowercase)
+        .map(crate::list::lowercase)
         .collect()
 }
 
