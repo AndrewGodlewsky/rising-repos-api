@@ -8,10 +8,11 @@ mod route;
 mod search;
 
 use std::cell::RefCell;
+use std::time::Duration;
 
-use worker::{console_error, event, Context, Date, Env, Fetch, Request, Response, Result};
+use worker::{console_error, event, Context, Date, Delay, Env, Fetch, Request, Response, Result};
 
-use crate::cache::Cache;
+use crate::cache::{Cache, Plan};
 use crate::render::MARKDOWN;
 use crate::route::Route;
 
@@ -21,23 +22,41 @@ const LIST_URL: &str = "https://risingrepos.com/repos.tsv";
 /// The search's own address, which a page's next address is made from.
 const SEARCH_URL: &str = "https://risingrepos.com/api/search";
 
+/// How long a request that waits for another's fetch sleeps between looks at the cache.
+const WAIT_STEP: Duration = Duration::from_millis(25);
+
 thread_local! {
-    /// The list this isolate holds between requests. An isolate runs one request at a time on one thread, and no
-    /// borrow of it is held across an await.
+    /// The list this isolate holds between requests. The isolate has one thread, but it can run several requests at
+    /// once, taking turns at each await, so no borrow of the cache is held across an await, and `Cache::plan` marks
+    /// a fetch as begun before its request waits on the site.
     static CACHE: RefCell<Cache> = RefCell::new(Cache::default());
 }
 
 #[event(fetch)]
-async fn fetch(request: Request, _env: Env, _context: Context) -> Result<Response> {
+async fn fetch(request: Request, _env: Env, context: Context) -> Result<Response> {
     let url = request.url()?;
     let query: Vec<(String, String)> = url.query_pairs().map(|(key, value)| (key.into_owned(), value.into_owned())).collect();
     let route = route::route(url.path(), &query);
     if route == Route::NotFound {
         return answer(render::not_found(), MARKDOWN, 404);
     }
-    let now = Date::now().as_millis() as f64;
-    if CACHE.with(|cache| cache.borrow().needs_refresh(now)) {
-        refresh(now).await;
+    loop {
+        let now = now_ms();
+        match CACHE.with(|cache| cache.borrow_mut().plan(now)) {
+            Plan::Use => break,
+            // The answer goes out from the list held, and the fetch and the reading of the new list run after it.
+            Plan::RefreshBehind => {
+                context.wait_until(refresh(now));
+                break;
+            }
+            Plan::Fetch => {
+                refresh(now).await;
+                break;
+            }
+            // Another request is fetching the first list. Sleeping costs no CPU; once its fetch ends, the plan says
+            // to use the list, or, if it failed, to fetch again.
+            Plan::Wait => Delay::from(WAIT_STEP).await,
+        }
     }
     CACHE.with(|cache| {
         let cache = cache.borrow();
@@ -61,19 +80,23 @@ async fn fetch(request: Request, _env: Env, _context: Context) -> Result<Respons
     })
 }
 
+fn now_ms() -> f64 {
+    Date::now().as_millis() as f64
+}
+
 /// Ask the site for the list, and keep it if it can be read. A failure keeps the list held, and is logged.
-async fn refresh(now: f64) {
+async fn refresh(began: f64) {
     let fetched = fetch_list().await;
     CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         match fetched {
             Ok(text) => {
-                if let Err(error) = cache.accept(text, now) {
+                if let Err(error) = cache.accept(text, began) {
                     console_error!("the list from {LIST_URL} was not used: {error}");
                 }
             }
             Err(error) => {
-                cache.failed(now);
+                cache.failed(began);
                 console_error!("the list could not be fetched from {LIST_URL}: {error}");
             }
         }
