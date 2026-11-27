@@ -3,6 +3,10 @@
 /// The most characters of `q` that a search reads (rising-repos-site#173).
 pub const QUERY_LIMIT: usize = 100;
 
+/// The most words of `q` that a search reads. Each word is looked for in every repository, so many short words would
+/// multiply a search's CPU against the Free plan's 10 ms (the final review of rising-repos-api#1).
+pub const WORD_LIMIT: usize = 8;
+
 #[derive(Debug, PartialEq)]
 pub struct SearchQuery {
     /// The words of `q`, lowercased. A piece with no letter or digit in it is not a word.
@@ -45,13 +49,20 @@ pub fn route(path: &str, query: &[(String, String)]) -> Route {
 }
 
 /// The words of a query cut to `QUERY_LIMIT` characters: its pieces between white space, lowercased, leaving out a
-/// piece with no letter or digit, so that a query of spaces or punctuation has no word to match.
+/// piece with no letter or digit, so that a query of spaces or punctuation has no word to match. A word is read once,
+/// and no more than `WORD_LIMIT` of them.
 fn words(q: &str) -> Vec<String> {
     let cut: String = q.chars().take(QUERY_LIMIT).collect();
-    cut.split_whitespace()
-        .filter(|piece| piece.chars().any(char::is_alphanumeric))
-        .map(crate::list::lowercase)
-        .collect()
+    let mut words: Vec<String> = Vec::new();
+    for word in cut.split_whitespace().filter(|piece| piece.chars().any(char::is_alphanumeric)).map(crate::list::lowercase) {
+        if words.len() == WORD_LIMIT {
+            break;
+        }
+        if !words.contains(&word) {
+            words.push(word);
+        }
+    }
+    words
 }
 
 fn above_0(text: &str) -> Option<usize> {
@@ -103,6 +114,17 @@ mod tests {
         assert!(search(&[("q", "   ")]).words.is_empty());
         assert!(search(&[("q", "!!! -- ...")]).words.is_empty());
         assert_eq!(search(&[("q", "c++ node.js !!")]).words, vec!["c++", "node.js"]);
+    }
+
+    #[test]
+    fn a_word_given_twice_is_read_once() {
+        assert_eq!(search(&[("q", "pdf PDF reader pdf")]).words, vec!["pdf", "reader"]);
+    }
+
+    #[test]
+    fn a_query_reads_at_most_8_words() {
+        let words = search(&[("q", "one two three four five six seven eight nine ten")]).words;
+        assert_eq!(words, vec!["one", "two", "three", "four", "five", "six", "seven", "eight"]);
     }
 
     #[test]

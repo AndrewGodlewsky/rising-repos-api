@@ -10,11 +10,14 @@ pub fn search<'a>(list: &'a List, query: &SearchQuery) -> Vec<Repo<'a>> {
     if query.words.is_empty() {
         return Vec::new();
     }
-    let since = query.since.and_then(|count| oldest_of_newest_days(list, count));
+    let since = query.since.and_then(|count| list.oldest_of_newest_days(count));
+    // The longest word first: it is the likeliest to be missing, which ends a repository's check soonest.
+    let mut words: Vec<&str> = query.words.iter().map(String::as_str).collect();
+    words.sort_by_key(|word| std::cmp::Reverse(word.len()));
     list.repos()
         .take_while(|repo| since.is_none_or(|day| repo.last_board_day >= day))
         .filter(|repo| query.lang.as_deref().is_none_or(|lang| same_language(lang, repo.language)))
-        .filter(|repo| query.words.iter().all(|word| repo.haystack.contains(word.as_str())))
+        .filter(|repo| words.iter().all(|word| repo.haystack.contains(word)))
         .collect()
 }
 
@@ -25,27 +28,6 @@ pub fn find<'a>(list: &'a List, owner: &str, name: &str) -> Option<Repo<'a>> {
             .split_once('/')
             .is_some_and(|(its_owner, its_name)| its_owner.eq_ignore_ascii_case(owner) && its_name.eq_ignore_ascii_case(name))
     })
-}
-
-/// The oldest of the newest `count` board days that any repository was on, or nothing when the list holds fewer
-/// days than that. The list runs newest last board day first, and no repository was on a day after its last, so the
-/// walk stops at the first repository whose last day is older than every day it has kept.
-fn oldest_of_newest_days(list: &List, count: usize) -> Option<&str> {
-    let mut days: Vec<&str> = Vec::with_capacity(count.min(1024) + 1);
-    for repo in list.repos() {
-        if days.len() == count && repo.last_board_day < days[count - 1] {
-            break;
-        }
-        for (day, _) in repo.history.days() {
-            if let Err(place) = days.binary_search_by(|kept| day.cmp(kept)) {
-                if place < count {
-                    days.insert(place, day);
-                    days.truncate(count);
-                }
-            }
-        }
-    }
-    (days.len() == count).then(|| days[count - 1])
 }
 
 fn same_language(asked: &str, language: &str) -> bool {

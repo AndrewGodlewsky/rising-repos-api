@@ -20,6 +20,9 @@ pub struct List {
     /// Each repository's name and description, lowercased, one after another.
     lower: String,
     rows: Vec<Row>,
+    /// Every board day any repository was on, once, oldest first: the day as a number, and where its text is. A
+    /// search's `since` reads it, rather than every history (the final review of rising-repos-api#1).
+    days: Vec<(u32, Range<usize>)>,
 }
 
 /// Where a repository's fields are in the list's text, and its figures.
@@ -98,16 +101,23 @@ impl List {
         }
         let mut lower = String::with_capacity(text.len() / 2);
         let mut rows = Vec::with_capacity(lines.len());
+        let mut days = Vec::new();
         for (index, line) in lines.iter().enumerate().skip(2) {
-            rows.push(row(&text, line.clone(), &mut lower).map_err(|what| refuse(index + 1, what))?);
+            rows.push(row(&text, line.clone(), &mut lower, &mut days).map_err(|what| refuse(index + 1, what))?);
         }
         rows.sort_by(|a, b| b.day.cmp(&a.day).then(a.last_rank.cmp(&b.last_rank)));
-        Ok(List { text, lower, rows })
+        Ok(List { text, lower, rows, days })
     }
 
     #[cfg(test)]
     pub fn len(&self) -> usize {
         self.rows.len()
+    }
+
+    /// The oldest of the newest `count` board days that any repository was on, or nothing when the list holds fewer.
+    pub fn oldest_of_newest_days(&self, count: usize) -> Option<&str> {
+        let place = self.days.len().checked_sub(count).filter(|_| count > 0)?;
+        Some(&self.text[self.days[place].1.clone()])
     }
 
     /// Every repository, newest last board day first, then the better rank that day.
@@ -130,8 +140,9 @@ impl List {
     }
 }
 
-/// The row of the line at `line` in `text`, with its haystack written onto the end of `lower`.
-fn row(text: &str, line: Range<usize>, lower: &mut String) -> Result<Row, String> {
+/// The row of the line at `line` in `text`, with its haystack written onto the end of `lower`, and each board day of
+/// its history not yet in `days` put there in its place.
+fn row(text: &str, line: Range<usize>, lower: &mut String, days: &mut Vec<(u32, Range<usize>)>) -> Result<Row, String> {
     let mut fields: [Range<usize>; 7] = Default::default();
     let mut count = 0;
     let mut start = line.start;
@@ -154,8 +165,15 @@ fn row(text: &str, line: Range<usize>, lower: &mut String) -> Result<Row, String
     let rank = number("last_rank", &last_rank)?;
     let day = day_number(field(&last_board_day)).ok_or_else(|| format!("last_board_day is {:?}", field(&last_board_day)))?;
     let seen = field(&history);
-    if seen.split(',').any(|one| day_and_rank(one).is_none()) {
-        return Err(format!("history is {seen:?}, not board days and ranks"));
+    let mut at = history.start;
+    for one in seen.split(',') {
+        let (day, number) = day_and_rank(one)
+            .and_then(|(day, _)| Some((day, day_number(day)?)))
+            .ok_or_else(|| format!("history is {seen:?}, not board days and ranks"))?;
+        if let Err(place) = days.binary_search_by_key(&number, |(known, _)| *known) {
+            days.insert(place, (number, at..at + day.len()));
+        }
+        at += one.len() + 1;
     }
     let haystack_start = lower.len();
     lowercase_onto(lower, field(&full_name));
@@ -289,6 +307,17 @@ mod tests {
         for bad in ["", "2026-11-26", "2026-11-26:x", "2026-11-26:1,", "yesterday:1"] {
             assert_eq!(line_of(parse(&line("5", "2026-11-26", bad))), 8, "history {bad:?}");
         }
+    }
+
+    #[test]
+    fn the_list_knows_the_oldest_of_its_newest_board_days() {
+        let list = parse(FIXTURE).unwrap();
+        // The fixture's board days, newest first: 26, 25, 20, 19 November; 2, 1 October; 4, 3 August.
+        assert_eq!(list.oldest_of_newest_days(1), Some("2026-11-26"));
+        assert_eq!(list.oldest_of_newest_days(3), Some("2026-11-20"));
+        assert_eq!(list.oldest_of_newest_days(8), Some("2026-08-03"));
+        assert_eq!(list.oldest_of_newest_days(9), None);
+        assert_eq!(list.oldest_of_newest_days(0), None);
     }
 
     #[test]
