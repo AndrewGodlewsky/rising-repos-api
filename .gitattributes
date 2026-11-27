@@ -1,0 +1,3 @@
+# The test fixtures stay byte for byte as written: git never changes their line endings, on any machine, so
+# a test that adds carriage returns to one starts from none.
+tests/fixtures/** -text

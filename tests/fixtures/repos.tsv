@@ -1,0 +1,7 @@
+# rising-repos list, format 1
+full_name	language	stars	last_board_day	last_rank	history	description
+acme/old-days	Go	1200	2026-11-20	3	2026-11-19:9,2026-11-20:3	Kept only for the order: last on an older board day.
+pallets/flask	Python	75297	2026-11-26	221	2026-08-03:1,2026-08-04:5,2026-11-26:221	The Python micro framework for building web applications.
+tinyorg/pdfquote		980	2026-11-26	12	2026-11-26:12	A "fast" PDF reader, with no language GitHub could name.
+newowner/renamed-tool	Rust	4410	2026-11-25	40	2026-10-01:88,2026-10-02:61,2026-11-25:40	Renamed and moved since its first boards; the line keeps its whole history.
+pdf-labs/PDF-Kit	TypeScript	15020	2026-11-26	3	2026-11-25:7,2026-11-26:3	Make PDF files in the browser.

@@ -1,0 +1,20 @@
+[package]
+name = "rising-repos-api"
+version = "0.1.0"
+edition = "2021"
+description = "The query service of risingrepos.com: a Cloudflare Worker that searches every repository ever on a board"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Pinned exactly, as rising-repos-site#175 decided: a version moves only once it is free of known vulnerabilities and
+# at least 14 days old (the site's STANDARDS.md, C8).
+worker = "=0.9.0"
+
+[profile.release]
+# Speed before size: a request has 10 ms of CPU on the Free plan, and the trial's search took 1 to 2 ms of it.
+opt-level = 3
+lto = true
+codegen-units = 1
